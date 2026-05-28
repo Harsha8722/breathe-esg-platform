@@ -1,25 +1,17 @@
 """
 Breathe ESG Platform - Django Settings
-Production-ready configuration using django-environ
+Production-ready configuration for Render deployment
 """
 import os
+import dj_database_url
 from pathlib import Path
 from datetime import timedelta
-import environ
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-env = environ.Env(
-    DEBUG=(bool, False),
-    ALLOWED_HOSTS=(list, ['localhost', '127.0.0.1']),
-)
-
-# Read .env file if it exists
-environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
-
-SECRET_KEY = env('SECRET_KEY', default='django-insecure-change-this-in-production-breathe-esg')
-DEBUG = env('DEBUG', default=True)
-ALLOWED_HOSTS = env('ALLOWED_HOSTS', default=['localhost', '127.0.0.1', '0.0.0.0'])
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-this-in-production-breathe-esg')
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com').split(',')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -79,10 +71,19 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-# Database
-DATABASES = {
-    'default': env.db('DATABASE_URL', default='sqlite:///db.sqlite3')
-}
+# Database — uses DATABASE_URL env var on Render, SQLite locally
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Auth
 AUTH_USER_MODEL = 'authentication.User'
@@ -96,8 +97,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # JWT Configuration
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=env.int('JWT_ACCESS_TOKEN_LIFETIME_MINUTES', default=60)),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=env.int('JWT_REFRESH_TOKEN_LIFETIME_DAYS', default=7)),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=int(os.environ.get('JWT_ACCESS_TOKEN_LIFETIME_MINUTES', 60))),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=int(os.environ.get('JWT_REFRESH_TOKEN_LIFETIME_DAYS', 7))),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
@@ -136,10 +137,11 @@ REST_FRAMEWORK = {
 }
 
 # CORS
-CORS_ALLOWED_ORIGINS = env.list(
+_cors_origins = os.environ.get(
     'CORS_ALLOWED_ORIGINS',
-    default=['http://localhost:3000', 'http://localhost:5173']
+    'http://localhost:3000,http://localhost:5173'
 )
+CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept', 'accept-encoding', 'authorization', 'content-type',
@@ -169,8 +171,8 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024
 
 # Celery
-CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://localhost:6379/1')
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/1')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -180,20 +182,9 @@ CELERY_TIMEZONE = 'UTC'
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-            'style': '{',
-        },
-        'simple': {
-            'format': '{levelname} {message}',
-            'style': '{',
-        },
-    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
         },
     },
     'root': {
@@ -206,11 +197,6 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
-        'apps': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
-            'propagate': False,
-        },
     },
 }
 
@@ -218,6 +204,6 @@ LOGGING = {
 ESG_SETTINGS = {
     'SUPPORTED_FILE_TYPES': ['.csv', '.xlsx', '.xls'],
     'MAX_UPLOAD_SIZE_MB': 50,
-    'SUSPICIOUS_SPIKE_THRESHOLD': 3.0,  # Standard deviations
+    'SUSPICIOUS_SPIKE_THRESHOLD': 3.0,
     'DUPLICATE_DETECTION_FIELDS': ['activity_date', 'quantity', 'source_identifier'],
 }
