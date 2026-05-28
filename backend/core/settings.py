@@ -201,3 +201,6 @@ ESG_SETTINGS = {
     'SUSPICIOUS_SPIKE_THRESHOLD': 3.0,
     'DUPLICATE_DETECTION_FIELDS': ['activity_date', 'quantity', 'source_identifier'],
 }
+
+STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
