@@ -1,0 +1,22 @@
+Meter ID,Billing Start,Billing End,Usage (kWh),Unit,Tariff Type,Facility,Account Name,Region,Total Charge,Currency
+MTR-UK-0001,2024-01-01,2024-01-31,145200,kWh,Standard Business,Manchester Plant,ACME Corp UK,uk,18240.50,GBP
+MTR-US-0002,2024-01-01,2024-02-01,287000,kWh,Time-of-Use,New York HQ,ACME Corp USA,us_avg,32156.20,USD
+MTR-DE-0003,2024-01-01,2024-01-31,98450,kWh,Industrial Flat,Frankfurt Office,ACME Europe GmbH,eu,11234.80,EUR
+MTR-IN-0004,01/01/2024,31/01/2024,412000,kWh,Agricultural Industrial,Chennai Plant,ACME India Ltd,in,28840.00,INR
+MTR-UK-0001,2024-01-15,2024-02-15,138900,kWh,Standard Business,Manchester Plant,ACME Corp UK,uk,17890.00,GBP
+MTR-AU-0005,2024-01-01,2024-01-31,193000,kWh,Commercial Peak,Sydney Office,ACME Australia,au,24560.80,AUD
+MTR-CN-0006,2024/01/01,2024/01/31,520000,MWh,Industrial,Shanghai Factory,ACME China,cn,31200.00,CNY
+MTR-US-0007,2024-01-01,2024-01-31,,kWh,Small Commercial,Chicago Warehouse,ACME Corp USA,us_avg,,USD
+MTR-US-0008,2024-01-01,2024-01-31,-500,kWh,Residential Business,Atlanta Office,ACME South,us_avg,150.00,USD
+MTR-DE-0003,2024-02-01,2024-02-29,102300,kWh,Industrial Flat,Frankfurt Office,ACME Europe GmbH,eu,11678.40,EUR
+MTR-UK-0001,2024-02-01,2024-02-29,141800,kWh,Standard Business,Manchester Plant,ACME Corp UK,uk,18564.30,GBP
+MTR-IN-0004,2024-02-01,2024-02-29,389000,kWh,,Chennai Plant,ACME India Ltd,in,27230.00,INR
+MTR-AU-0005,2024-02-01,2024-02-29,201000,kWh,Commercial Peak,Sydney Office,ACME Australia,au,25827.60,AUD
+MTR-US-0002,2024-02-01,2024-02-29,5400000,kWh,Time-of-Use,New York HQ,ACME Corp USA,us_avg,612000.00,USD
+MTR-CN-0006,2024-02-01,2024-02-29,495000,kWh,Industrial,Shanghai Factory,ACME China,cn,29700.00,CNY
+MTR-UK-0009,INVALID DATE,2024-03-31,88000,kWh,Standard Business,London Office,ACME Corp UK,uk,11440.00,GBP
+MTR-DE-0003,2024-03-01,2024-03-31,109700,kWh,Industrial Flat,Frankfurt Office,ACME Europe GmbH,eu,12506.80,EUR
+MTR-UK-0001,2024-03-01,2024-03-31,139200,kWh,Standard Business,Manchester Plant,ACME Corp UK,uk,18096.00,GBP
+MTR-IN-0004,2024-03-01,2024-03-31,425000,kWh,Agricultural Industrial,Chennai Plant,ACME India Ltd,in,29750.00,INR
+MTR-AU-0005,2024-03-01,2024-03-31,187000,kWh,Commercial Peak,Sydney Office,ACME Australia,au,24051.00,AUD
+MTR-US-0002,2024-03-01,2024-03-31,302000,kWh,Time-of-Use,New York HQ,ACME Corp USA,us_avg,33948.20,USD
