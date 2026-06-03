@@ -2,12 +2,18 @@
 Breathe ESG Platform - Django Settings
 Production-ready configuration for Render deployment
 """
+import environ
 import os
 import dj_database_url
 from pathlib import Path
 from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+env = environ.Env()
+env_file = BASE_DIR.parent / '.env'
+
+if env_file.exists():
+    environ.Env.read_env(str(env_file))
 
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-this-in-production-breathe-esg')
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
