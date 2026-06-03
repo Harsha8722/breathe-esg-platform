@@ -8,6 +8,7 @@ services:
     buildCommand: |
       pip install -r requirements.txt &&
       python manage.py migrate &&
+      python manage.py assign_tenant &&
       python manage.py collectstatic --noinput
     startCommand: gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120
     healthCheckPath: /api/v1/auth/me/
