@@ -17,7 +17,10 @@ if env_file.exists():
 
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-change-this-in-production-breathe-esg')
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.onrender.com').split(',')
+_allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', '')
+_allowed_hosts_list = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()]
+ALLOWED_HOSTS = _allowed_hosts_list + ['localhost', '127.0.0.1', '.onrender.com', 'breathe-esg-backend-egph.onrender.com']
+ALLOWED_HOSTS = list(set(ALLOWED_HOSTS))
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -44,9 +47,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -136,18 +139,19 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'core.exceptions.custom_exception_handler',
 }
 
+from corsheaders.defaults import default_headers
+
 # CORS
 _cors_origins = os.environ.get(
     'CORS_ALLOWED_ORIGINS',
     'http://localhost:3000,http://localhost:5173'
 )
-CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
+CORS_ALLOWED_ORIGINS = [o.strip().rstrip('/') for o in _cors_origins.split(',') if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_HEADERS = [
-    'accept', 'accept-encoding', 'authorization', 'content-type',
-    'dnt', 'origin', 'user-agent', 'x-csrftoken', 'x-requested-with',
+CORS_ALLOW_HEADERS = list(default_headers) + [
     'x-tenant-id',
 ]
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'

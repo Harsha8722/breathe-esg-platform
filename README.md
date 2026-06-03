@@ -174,7 +174,13 @@ REDIS_URL=redis://localhost:6379/0
 
 ## Screenshots
 
-_[Coming soon — deploy and screenshot]_
+### Login Page
+
+![Login Page](docs/screenshots/login_page.png)
+
+### Dashboard
+
+![Dashboard](docs/screenshots/dashboard.png)
 
 ---
 
