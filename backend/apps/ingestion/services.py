@@ -10,6 +10,7 @@ from apps.emissions.models import SourceFile, EmissionRecord
 from apps.ingestion.parsers import SAPFuelParser, UtilityElectricityParser, CorporateTravelParser
 from apps.ingestion.suspicious_detector import SuspiciousRowDetector
 from utils.audit_service import AuditService
+from utils.json_sanitizer import sanitize_for_json
 from apps.audit.models import AuditLog
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,11 @@ class IngestionService:
         sf.processing_started_at = timezone.now()
         sf.save(update_fields=['status', 'processing_started_at'])
 
+        logger.info(
+            f"[IngestionService] Starting ingestion for file={sf.original_filename}, "
+            f"source_type={sf.source_type}, file_id={sf.id}"
+        )
+
         AuditService.log(
             tenant=sf.tenant, actor=self.actor,
             action=AuditLog.Action.INGESTION_STARTED,
@@ -40,12 +46,23 @@ class IngestionService:
         )
 
         try:
+            # Select parser
             ParserClass = PARSER_MAP.get(sf.source_type)
             if not ParserClass:
                 raise ValueError(f"No parser for source type: {sf.source_type}")
 
+            logger.info(
+                f"[IngestionService] Parser selected: {ParserClass.__name__} "
+                f"for source_type={sf.source_type}"
+            )
+
             parser = ParserClass(sf)
             raw_records = parser.parse(sf.file_path.path)
+
+            logger.info(
+                f"[IngestionService] Parser returned {len(raw_records)} records "
+                f"for file={sf.original_filename}"
+            )
 
             # Statistical suspicious detection
             detector = SuspiciousRowDetector()
@@ -65,17 +82,23 @@ class IngestionService:
                 'status', 'processing_completed_at'
             ])
 
+            logger.info(
+                f"[IngestionService] Ingestion complete for file={sf.original_filename}: "
+                f"total={stats['total']}, processed={stats['processed']}, "
+                f"flagged={stats['flagged']}, failed={stats['failed']}"
+            )
+
             AuditService.log(
                 tenant=sf.tenant, actor=self.actor,
                 action=AuditLog.Action.INGESTION_COMPLETED,
                 target_type='source_file', target_id=str(sf.id),
                 target_repr=sf.original_filename,
-                metadata=stats,
+                metadata=sanitize_for_json(stats),
             )
             return stats
 
         except Exception as e:
-            logger.exception(f"Ingestion failed for {sf.id}: {e}")
+            logger.exception(f"[IngestionService] Ingestion failed for {sf.id}: {e}")
             sf.status = SourceFile.Status.FAILED
             sf.error_message = str(e)[:2000]
             sf.processing_completed_at = timezone.now()
@@ -85,7 +108,7 @@ class IngestionService:
                 tenant=sf.tenant, actor=self.actor,
                 action=AuditLog.Action.INGESTION_FAILED,
                 target_type='source_file', target_id=str(sf.id),
-                metadata={'error': str(e)},
+                metadata=sanitize_for_json({'error': str(e)}),
             )
             raise
 
@@ -101,6 +124,11 @@ class IngestionService:
                     if r.get('suspicious_flag') or r.get('validation_errors')
                     else EmissionRecord.Status.PENDING
                 )
+
+                # Sanitize all JSON-bound fields before persisting
+                original_payload = sanitize_for_json(r.get('original_payload', {}))
+                suspicious_reasons = sanitize_for_json(r.get('suspicious_reasons', []))
+                validation_errors = sanitize_for_json(r.get('validation_errors', []))
 
                 record = EmissionRecord(
                     tenant=self.source_file.tenant,
@@ -122,10 +150,10 @@ class IngestionService:
                     emission_factor_source=str(r.get('emission_factor_source', ''))[:200],
                     calculated_emissions=r.get('calculated_emissions'),
                     suspicious_flag=r.get('suspicious_flag', False),
-                    suspicious_reasons=r.get('suspicious_reasons', []),
-                    validation_errors=r.get('validation_errors', []),
+                    suspicious_reasons=suspicious_reasons,
+                    validation_errors=validation_errors,
                     is_duplicate=r.get('is_duplicate', False),
-                    original_payload=r.get('original_payload', {}),
+                    original_payload=original_payload,
                     row_number=r.get('row_number', 0),
                 )
                 to_create.append(record)
@@ -134,8 +162,13 @@ class IngestionService:
                     stats['flagged'] += 1
 
             except Exception as e:
-                logger.warning(f"Row {r.get('row_number')} failed: {e}")
+                logger.warning(
+                    f"[IngestionService] Row {r.get('row_number')} failed to create: {e}"
+                )
                 stats['failed'] += 1
 
         EmissionRecord.objects.bulk_create(to_create, batch_size=500)
+        logger.info(
+            f"[IngestionService] Bulk created {len(to_create)} EmissionRecord objects"
+        )
         return stats

@@ -6,6 +6,7 @@ import pandas as pd
 from decimal import Decimal
 import logging
 
+from apps.ingestion.parsers.base_parser import BaseParser
 from utils.date_parser import parse_date_flexible
 from utils.emission_factors import get_travel_factor
 
@@ -46,6 +47,7 @@ AIRPORT_DISTANCES = {
     ('SIN', 'LHR'): 10841, ('LHR', 'SIN'): 10841,
     ('DXB', 'LHR'): 5484, ('LHR', 'DXB'): 5484,
     ('ORD', 'LHR'): 6349, ('LHR', 'ORD'): 6349,
+    ('LAX', 'ORD'): 2804, ('ORD', 'LAX'): 2804,
 }
 
 
@@ -70,49 +72,17 @@ def estimate_distance(origin: str, destination: str) -> tuple:
     return None, f"Distance unknown for route {o}-{d}"
 
 
-def map_columns(df: pd.DataFrame) -> dict:
-    col_map = {}
-    df_cols_lower = {c.lower().strip(): c for c in df.columns}
-    for canonical, aliases in TRAVEL_COLUMN_ALIASES.items():
-        for alias in aliases:
-            if alias.lower() in df_cols_lower:
-                col_map[canonical] = df_cols_lower[alias.lower()]
-                break
-    return col_map
-
-
-class CorporateTravelParser:
-    def __init__(self, source_file_obj):
-        self.source_file = source_file_obj
-
-    def parse(self, file_path: str) -> list:
-        try:
-            if str(file_path).endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file_path, dtype=str)
-            else:
-                df = pd.read_csv(file_path, dtype=str, encoding='utf-8', sep=None, engine='python')
-        except Exception as e:
-            raise ValueError(f"Cannot read travel file: {e}")
-
-        col_map = map_columns(df)
-        records = []
-        for idx, row in df.iterrows():
-            result = self._parse_row(row, idx + 2, col_map)
-            if result:
-                records.append(result)
-        return records
+class CorporateTravelParser(BaseParser):
+    PARSER_NAME = 'CorporateTravelParser'
+    COLUMN_ALIASES = TRAVEL_COLUMN_ALIASES
+    REQUIRED_COLUMNS = ['travel_date', 'expense_type']
 
     def _parse_row(self, row: pd.Series, row_number: int, col_map: dict) -> dict:
         original = row.to_dict()
         errors = []
         suspicious_reasons = []
 
-        def get(field):
-            col = col_map.get(field)
-            if col and col in row.index:
-                val = row[col]
-                return None if pd.isna(val) else str(val).strip()
-            return None
+        get = lambda field: self._get_field(row, col_map, field)
 
         raw_date = get('travel_date')
         activity_date, date_err = parse_date_flexible(raw_date)
@@ -129,7 +99,7 @@ class CorporateTravelParser:
         # Distance
         raw_dist = get('distance_km')
         distance_km = None
-        if raw_dist and raw_dist not in ('', 'nan', 'N/A'):
+        if raw_dist and raw_dist not in ('', 'N/A'):
             try:
                 distance_km = Decimal(str(raw_dist).replace(',', '').replace(' ', ''))
             except Exception:
@@ -143,7 +113,7 @@ class CorporateTravelParser:
         # Nights for hotel
         raw_nights = get('nights')
         nights = None
-        if raw_nights and raw_nights not in ('', 'nan'):
+        if raw_nights:
             try:
                 nights = int(float(raw_nights))
             except Exception:

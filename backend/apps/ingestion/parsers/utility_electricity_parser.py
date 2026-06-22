@@ -9,8 +9,8 @@ from decimal import Decimal
 import hashlib
 import logging
 
+from apps.ingestion.parsers.base_parser import BaseParser
 from utils.date_parser import parse_date_flexible
-from utils.unit_normalizer import convert_quantity
 from utils.emission_factors import get_electricity_factor
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,7 @@ UTILITY_COLUMN_ALIASES = {
         'Bill Date', 'Invoice Date', 'Billing Date', 'Period End Date',
         'Service Date', 'Date', 'Statement Date', 'Month', 'Period',
         'Billing Period End', 'Reading Date', 'Service End Date',
+        'Billing Start', 'Billing End',
     ],
     'meter_id': [
         'Meter ID', 'Meter Number', 'Account Number', 'Account No',
@@ -28,8 +29,8 @@ UTILITY_COLUMN_ALIASES = {
         'Account ID', 'Site ID', 'Meter Reference',
     ],
     'consumption': [
-        'Consumption', 'Usage', 'kWh', 'Energy Used', 'Units',
-        'Electricity Used', 'Quantity', 'Amount', 'Net Usage',
+        'Consumption', 'Usage', 'kWh', 'Energy Used', 'Usage (kWh)',
+        'Electricity Used', 'Quantity', 'Net Usage',
         'Total Consumption', 'Billable Usage', 'Energy Consumption',
         'MWh', 'GWh',
     ],
@@ -43,15 +44,17 @@ UTILITY_COLUMN_ALIASES = {
     ],
     'tariff': [
         'Tariff', 'Rate', 'Plan', 'Rate Code', 'Tariff Code',
-        'Rate Plan', 'Electric Rate',
+        'Rate Plan', 'Electric Rate', 'Tariff Type',
     ],
     'supplier': [
         'Supplier', 'Utility', 'Provider', 'Utility Company',
         'Energy Supplier', 'Vendor', 'Utility Provider',
+        'Account Name',
     ],
     'cost': [
-        'Cost', 'Amount', 'Total Cost', 'Bill Amount', 'Charge',
+        'Cost', 'Total Cost', 'Bill Amount', 'Charge',
         'Total Charges', 'Invoice Amount', 'Total Amount Due',
+        'Total Charge',
     ],
     'currency': [
         'Currency', 'CCY', 'Currency Code',
@@ -61,18 +64,6 @@ UTILITY_COLUMN_ALIASES = {
         'Emission Zone', 'Electricity Region', 'Grid',
     ],
 }
-
-
-def map_columns(df: pd.DataFrame) -> dict:
-    """Map DataFrame columns to canonical field names using alias lookup."""
-    col_map = {}
-    df_cols_lower = {c.lower().strip(): c for c in df.columns}
-    for canonical, aliases in UTILITY_COLUMN_ALIASES.items():
-        for alias in aliases:
-            if alias.lower() in df_cols_lower:
-                col_map[canonical] = df_cols_lower[alias.lower()]
-                break
-    return col_map
 
 
 def compute_row_hash(row_data: dict) -> str:
@@ -99,43 +90,14 @@ def normalize_unit(raw_unit: str) -> str:
     return 'kWh'
 
 
-class UtilityElectricityParser:
+class UtilityElectricityParser(BaseParser):
+    PARSER_NAME = 'UtilityElectricityParser'
+    COLUMN_ALIASES = UTILITY_COLUMN_ALIASES
+    REQUIRED_COLUMNS = ['billing_date', 'consumption']
+
     def __init__(self, source_file_obj):
-        self.source_file = source_file_obj
+        super().__init__(source_file_obj)
         self.seen_hashes = set()
-
-    def parse(self, file_path: str) -> list:
-        """
-        Parse a utility electricity export file.
-        Returns list of normalized record dicts.
-        """
-        try:
-            fp = str(file_path)
-            if fp.endswith('.xlsx') or fp.endswith('.xls'):
-                df = pd.read_excel(fp, dtype=str)
-            else:
-                for encoding in ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']:
-                    try:
-                        df = pd.read_csv(fp, dtype=str, encoding=encoding, sep=None, engine='python')
-                        break
-                    except Exception:
-                        continue
-                else:
-                    raise ValueError("Could not read file with any known encoding")
-        except Exception as e:
-            logger.error(f"Failed to read utility electricity file: {e}")
-            raise ValueError(f"Cannot read file: {e}")
-
-        col_map = map_columns(df)
-        logger.info(f"UtilityElectricityParser: Detected column mapping: {col_map}")
-
-        records = []
-        for idx, row in df.iterrows():
-            result = self._parse_row(row, idx + 2, col_map)
-            if result:
-                records.append(result)
-
-        return records
 
     def _parse_row(self, row: pd.Series, row_number: int, col_map: dict) -> dict:
         """Parse a single utility row into a normalized record dict."""
@@ -143,12 +105,7 @@ class UtilityElectricityParser:
         errors = []
         suspicious_reasons = []
 
-        def get(field):
-            col = col_map.get(field)
-            if col and col in row.index:
-                val = row[col]
-                return None if pd.isna(val) else str(val).strip()
-            return None
+        get = lambda field: self._get_field(row, col_map, field)
 
         # Parse billing date
         raw_date = get('billing_date')
@@ -162,7 +119,7 @@ class UtilityElectricityParser:
         # Parse consumption
         raw_qty = get('consumption')
         quantity = None
-        if raw_qty in (None, '', 'nan'):
+        if raw_qty is None or raw_qty == '':
             errors.append("Missing consumption quantity")
         else:
             try:

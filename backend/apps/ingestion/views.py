@@ -50,6 +50,12 @@ class SourceFileUploadView(APIView):
         uploaded_file = serializer.validated_data['file']
         source_type = serializer.validated_data['source_type']
 
+        logger.info(
+            f"[UploadView] File upload received: filename={uploaded_file.name}, "
+            f"source_type={source_type}, user={request.user}, "
+            f"tenant={request.tenant}, size={uploaded_file.size} bytes"
+        )
+
         sf = SourceFile.objects.create(
             tenant=request.tenant,
             uploaded_by=request.user,
@@ -67,8 +73,21 @@ class SourceFileUploadView(APIView):
             try:
                 svc = IngestionService(sf, actor=request.user)
                 svc.run()
+                logger.info(
+                    f"[UploadView] Async ingestion completed successfully "
+                    f"for file={sf.original_filename}, id={sf.id}"
+                )
+            except ValueError as e:
+                # Validation errors (missing columns, bad file format) are expected
+                logger.warning(
+                    f"[UploadView] Ingestion validation error for "
+                    f"file={sf.original_filename}: {e}"
+                )
             except Exception as e:
-                logger.error(f"Async ingestion failed: {e}")
+                logger.exception(
+                    f"[UploadView] Async ingestion failed for "
+                    f"file={sf.original_filename}: {e}"
+                )
 
         thread = threading.Thread(target=run_ingestion, daemon=True)
         thread.start()

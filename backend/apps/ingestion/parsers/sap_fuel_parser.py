@@ -8,12 +8,11 @@ Handles SAP ECC / S4HANA CSV exports with:
 - Duplicate detection
 """
 import pandas as pd
-import numpy as np
 from decimal import Decimal
-import re
 import hashlib
 import logging
 
+from apps.ingestion.parsers.base_parser import BaseParser
 from utils.date_parser import parse_date_flexible
 from utils.unit_normalizer import convert_quantity
 from utils.emission_factors import get_fuel_factor
@@ -99,20 +98,6 @@ def normalize_fuel_type(raw: str) -> str:
     return cleaned.replace(' ', '_')
 
 
-def map_columns(df: pd.DataFrame) -> dict:
-    """Map DataFrame columns to canonical field names using alias lookup."""
-    col_map = {}
-    df_cols_lower = {c.lower().strip(): c for c in df.columns}
-
-    for canonical, aliases in SAP_COLUMN_ALIASES.items():
-        for alias in aliases:
-            if alias.lower() in df_cols_lower:
-                col_map[canonical] = df_cols_lower[alias.lower()]
-                break
-
-    return col_map
-
-
 def compute_row_hash(row_data: dict) -> str:
     """Generate a deterministic hash for duplicate detection."""
     key = '|'.join([
@@ -125,48 +110,14 @@ def compute_row_hash(row_data: dict) -> str:
     return hashlib.md5(key.encode()).hexdigest()
 
 
-class SAPFuelParser:
+class SAPFuelParser(BaseParser):
+    PARSER_NAME = 'SAPFuelParser'
+    COLUMN_ALIASES = SAP_COLUMN_ALIASES
+    REQUIRED_COLUMNS = ['activity_date', 'quantity']
+
     def __init__(self, source_file_obj):
-        self.source_file = source_file_obj
+        super().__init__(source_file_obj)
         self.seen_hashes = set()
-        self.results = []
-        self.errors = []
-
-    def parse(self, file_path: str) -> list:
-        """
-        Parse a SAP fuel export file. Returns list of normalized record dicts.
-        """
-        try:
-            df = self._read_file(file_path)
-        except Exception as e:
-            logger.error(f"Failed to read SAP file: {e}")
-            raise ValueError(f"Cannot read file: {e}")
-
-        col_map = map_columns(df)
-        logger.info(f"SAP Parser: Detected column mapping: {col_map}")
-
-        records = []
-        for idx, row in df.iterrows():
-            result = self._parse_row(row, idx + 2, col_map)  # +2 for 1-indexed + header
-            if result:
-                records.append(result)
-
-        return records
-
-    def _read_file(self, file_path: str) -> pd.DataFrame:
-        """Read CSV or Excel file, handling encoding issues."""
-        fp = str(file_path)
-        if fp.endswith('.xlsx') or fp.endswith('.xls'):
-            return pd.read_excel(fp, dtype=str)
-
-        # Try common encodings for SAP exports
-        for encoding in ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']:
-            try:
-                df = pd.read_csv(fp, dtype=str, encoding=encoding, sep=None, engine='python')
-                return df
-            except Exception:
-                continue
-        raise ValueError("Could not read file with any known encoding")
 
     def _parse_row(self, row: pd.Series, row_number: int, col_map: dict) -> dict:
         """Parse a single SAP row into a normalized record dict."""
@@ -174,12 +125,7 @@ class SAPFuelParser:
         errors = []
         suspicious_reasons = []
 
-        def get(field):
-            col = col_map.get(field)
-            if col and col in row.index:
-                val = row[col]
-                return None if pd.isna(val) else str(val).strip()
-            return None
+        get = lambda field: self._get_field(row, col_map, field)
 
         # Parse date
         raw_date = get('activity_date')
@@ -190,7 +136,7 @@ class SAPFuelParser:
         # Parse quantity
         raw_qty = get('quantity')
         try:
-            if raw_qty in (None, '', 'nan'):
+            if raw_qty is None or raw_qty == '':
                 quantity = None
                 errors.append("Missing quantity")
             else:
